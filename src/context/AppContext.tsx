@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useMemo, useRef, useContext, ReactNode } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { DragStartEvent, DragEndEvent } from '@dnd-kit/core';
+import { get, set } from 'idb-keyval';
 import { Document, Folder } from '../types';
 
 interface AppContextType {
@@ -34,6 +35,8 @@ interface AppContextType {
   setSaveStatus: React.Dispatch<React.SetStateAction<'saved' | 'saving' | 'error'>>;
   libraryPath: string | null;
   setLibraryPath: React.Dispatch<React.SetStateAction<string | null>>;
+  dirHandle: any | null;
+  setDirHandle: React.Dispatch<React.SetStateAction<any | null>>;
   activeDragId: string | null;
   setActiveDragId: React.Dispatch<React.SetStateAction<string | null>>;
   contextMenu: { x: number, y: number, type: 'folder' | 'document', id: string } | null;
@@ -106,6 +109,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [fontSize, setFontSize] = useState(12);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [libraryPath, setLibraryPath] = useState<string | null>(null);
+  const [dirHandle, setDirHandle] = useState<any | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, type: 'folder' | 'document', id: string } | null>(null);
   const [clipboard, setClipboard] = useState<{ type: 'folder' | 'document', id: string, action: 'copy' | 'move' } | null>(null);
@@ -278,6 +282,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (savedLibraryPath) {
       setLibraryPath(savedLibraryPath);
     }
+
+    get('nova-library-handle').then(handle => {
+      if (handle) {
+        setDirHandle(handle);
+      }
+    });
 
     if (savedCalendarExpanded) {
       try {
@@ -491,9 +501,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       if ('showDirectoryPicker' in window) {
         // @ts-ignore - File System Access API
-        const handle = await window.showDirectoryPicker();
+        const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
         setLibraryPath(handle.name);
+        setDirHandle(handle);
         localStorage.setItem('nova-library-path', handle.name);
+        await set('nova-library-handle', handle);
       }
  else {
         alert('File System Access API is not supported in this browser.');
@@ -510,14 +522,51 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (documents.length === 0) return;
     
     setSaveStatus('saving');
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       localStorage.setItem('nova-documents', JSON.stringify(documents));
       localStorage.setItem('nova-folders', JSON.stringify(folders));
+      
+      if (dirHandle) {
+        try {
+          if (await dirHandle.queryPermission({ mode: 'readwrite' }) === 'granted') {
+            for (const doc of documents) {
+              let currentDir = dirHandle;
+              if (doc.folderId) {
+                const folderPath = [];
+                let currentFolderId: string | null | undefined = doc.folderId;
+                while (currentFolderId) {
+                  const folder = folders.find(f => f.id === currentFolderId);
+                  if (folder) {
+                    folderPath.unshift(folder.name);
+                    currentFolderId = folder.parentId;
+                  } else {
+                    break;
+                  }
+                }
+                
+                for (const folderName of folderPath) {
+                  const safeFolderName = folderName.replace(/[/\\?%*:|"<>]/g, '-');
+                  currentDir = await currentDir.getDirectoryHandle(safeFolderName, { create: true });
+                }
+              }
+              
+              const safeFileName = `${(doc.title || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-')}.md`;
+              const fileHandle = await currentDir.getFileHandle(safeFileName, { create: true });
+              const writable = await fileHandle.createWritable();
+              await writable.write(doc.content);
+              await writable.close();
+            }
+          }
+        } catch (err) {
+          console.error("Failed to save to local library", err);
+        }
+      }
+      
       setSaveStatus('saved');
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [documents, folders]);
+  }, [documents, folders, dirHandle]);
 
   const activeDoc = useMemo(() => 
     documents.find(doc => doc.id === activeId) || null,
@@ -664,6 +713,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setSaveStatus,
       libraryPath,
       setLibraryPath,
+      dirHandle,
+      setDirHandle,
       activeDragId,
       setActiveDragId,
       contextMenu,
@@ -731,6 +782,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       fontSize,
       saveStatus,
       libraryPath,
+      dirHandle,
       activeDragId,
       contextMenu,
       clipboard,
