@@ -551,10 +551,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               }
               
               const safeFileName = `${(doc.title || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-')}.md`;
+              
+              // Handle renaming/moving
+              if ((doc.lastSavedTitle && doc.lastSavedTitle !== doc.title) || 
+                  (doc.lastSavedFolderId !== undefined && doc.lastSavedFolderId !== doc.folderId)) {
+                try {
+                  let oldDir = dirHandle;
+                  if (doc.lastSavedFolderId) {
+                    const oldFolderPath = [];
+                    let currentOldFolderId: string | null | undefined = doc.lastSavedFolderId;
+                    while (currentOldFolderId) {
+                      const folder = folders.find(f => f.id === currentOldFolderId);
+                      if (folder) {
+                        oldFolderPath.unshift(folder.name);
+                        currentOldFolderId = folder.parentId;
+                      } else {
+                        break;
+                      }
+                    }
+                    for (const folderName of oldFolderPath) {
+                      const safeFolderName = folderName.replace(/[/\\?%*:|"<>]/g, '-');
+                      oldDir = await oldDir.getDirectoryHandle(safeFolderName, { create: false });
+                    }
+                  }
+                  const oldSafeFileName = `${(doc.lastSavedTitle || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-')}.md`;
+                  await oldDir.removeEntry(oldSafeFileName);
+                } catch (e) {
+                  // Ignore errors if old file doesn't exist
+                }
+              }
+
               const fileHandle = await currentDir.getFileHandle(safeFileName, { create: true });
               const writable = await fileHandle.createWritable();
               await writable.write(doc.content);
               await writable.close();
+              
+              // Update lastSaved properties
+              doc.lastSavedTitle = doc.title;
+              doc.lastSavedFolderId = doc.folderId;
             }
           }
         } catch (err) {
@@ -607,10 +641,46 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const handleDeleteDoc = (id: string, e: React.MouseEvent) => {
+  const handleDeleteDoc = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const docToDelete = documents.find(doc => doc.id === id);
     const newDocs = documents.filter(doc => doc.id !== id);
     setDocuments(newDocs);
+
+    if (docToDelete && dirHandle) {
+      try {
+        if (await dirHandle.queryPermission({ mode: 'readwrite' }) === 'granted') {
+          let currentDir = dirHandle;
+          if (docToDelete.lastSavedFolderId || docToDelete.folderId) {
+            const folderIdToUse = docToDelete.lastSavedFolderId !== undefined ? docToDelete.lastSavedFolderId : docToDelete.folderId;
+            if (folderIdToUse) {
+              const folderPath = [];
+              let currentFolderId: string | null | undefined = folderIdToUse;
+              while (currentFolderId) {
+                const folder = folders.find(f => f.id === currentFolderId);
+                if (folder) {
+                  folderPath.unshift(folder.name);
+                  currentFolderId = folder.parentId;
+                } else {
+                  break;
+                }
+              }
+              
+              for (const folderName of folderPath) {
+                const safeFolderName = folderName.replace(/[/\\?%*:|"<>]/g, '-');
+                currentDir = await currentDir.getDirectoryHandle(safeFolderName, { create: false });
+              }
+            }
+          }
+          
+          const titleToUse = docToDelete.lastSavedTitle || docToDelete.title || 'Untitled';
+          const safeFileName = `${titleToUse.replace(/[/\\?%*:|"<>]/g, '-')}.md`;
+          await currentDir.removeEntry(safeFileName);
+        }
+      } catch (err) {
+        console.error("Failed to delete file from local library", err);
+      }
+    }
 
     // Also close the tab
     handleCloseTab(id, e);

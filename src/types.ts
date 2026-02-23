@@ -12,4 +12,6 @@ export interface Document {
   content: string;
   updatedAt: number;
   folderId?: string | null;
+  lastSavedTitle?: string;
+  lastSavedFolderId?: string | null;
 }
