@@ -76,7 +76,6 @@ interface AppContextType {
   handleRenameSave: () => void;
   handleRenameCancel: () => void;
   handleSelectLibraryLocation: () => Promise<void>;
-  syncToLocalDisk: () => Promise<void>;
   activeDoc: Document | null;
   activeFolder: Folder | null;
   handleCreateFolder: (parentId?: string | null) => void;
@@ -507,11 +506,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setDirHandle(handle);
         localStorage.setItem('nova-library-path', handle.name);
         await set('nova-library-handle', handle);
-        
-        // Force a sync immediately after selecting
-        setTimeout(() => {
-          syncToLocalDisk();
-        }, 500);
       }
  else {
         alert('File System Access API is not supported in this browser.');
@@ -520,94 +514,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
  catch (err) {
       // User cancelled or error occurred
       console.log('Folder selection cancelled or failed', err);
-    }
-  };
-
-  const syncToLocalDisk = async () => {
-    if (!dirHandle) {
-      alert("No library folder selected.");
-      return;
-    }
-    
-    try {
-      if (await dirHandle.queryPermission({ mode: 'readwrite' }) !== 'granted') {
-        const perm = await dirHandle.requestPermission({ mode: 'readwrite' });
-        if (perm !== 'granted') {
-          alert("Permission to access the folder was denied.");
-          return;
-        }
-      }
-      
-      setSaveStatus('saving');
-      
-      for (const doc of documents) {
-        let currentDir = dirHandle;
-        if (doc.folderId) {
-          const folderPath = [];
-          let currentFolderId: string | null | undefined = doc.folderId;
-          while (currentFolderId) {
-            const folder = folders.find(f => f.id === currentFolderId);
-            if (folder) {
-              folderPath.unshift(folder.name);
-              currentFolderId = folder.parentId;
-            } else {
-              break;
-            }
-          }
-          
-          for (const folderName of folderPath) {
-            const safeFolderName = folderName.replace(/[/\\?%*:|"<>]/g, '-');
-            currentDir = await currentDir.getDirectoryHandle(safeFolderName, { create: true });
-          }
-        }
-        
-        const safeFileName = `${(doc.title || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-')}.md`;
-        
-        // Handle renaming/moving
-        if ((doc.lastSavedTitle && doc.lastSavedTitle !== doc.title) || 
-            (doc.lastSavedFolderId !== undefined && doc.lastSavedFolderId !== doc.folderId)) {
-          try {
-            let oldDir = dirHandle;
-            if (doc.lastSavedFolderId) {
-              const oldFolderPath = [];
-              let currentOldFolderId: string | null | undefined = doc.lastSavedFolderId;
-              while (currentOldFolderId) {
-                const folder = folders.find(f => f.id === currentOldFolderId);
-                if (folder) {
-                  oldFolderPath.unshift(folder.name);
-                  currentOldFolderId = folder.parentId;
-                } else {
-                  break;
-                }
-              }
-              for (const folderName of oldFolderPath) {
-                const safeFolderName = folderName.replace(/[/\\?%*:|"<>]/g, '-');
-                oldDir = await oldDir.getDirectoryHandle(safeFolderName, { create: false });
-              }
-            }
-            const oldSafeFileName = `${(doc.lastSavedTitle || 'Untitled').replace(/[/\\?%*:|"<>]/g, '-')}.md`;
-            await oldDir.removeEntry(oldSafeFileName);
-          } catch (e) {
-            // Ignore errors if old file doesn't exist
-          }
-        }
-
-        const fileHandle = await currentDir.getFileHandle(safeFileName, { create: true });
-        const writable = await fileHandle.createWritable();
-        await writable.write(doc.content);
-        await writable.close();
-        
-        // Update lastSaved properties
-        doc.lastSavedTitle = doc.title;
-        doc.lastSavedFolderId = doc.folderId;
-      }
-      
-      setSaveStatus('saved');
-      alert("Successfully synced to local folder!");
-    } catch (err: any) {
-      console.error("Failed to sync to local library", err);
-      alert(`Failed to sync: ${err.message || 'Unknown error'}`);
-      setSaveStatus('error');
     }
   };
 
@@ -691,7 +597,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       
       setSaveStatus('saved');
-    }, 1000);
+    }, 300);
 
     return () => clearTimeout(timer);
   }, [documents, folders, dirHandle]);
@@ -918,7 +824,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       handleRenameSave,
       handleRenameCancel,
       handleSelectLibraryLocation,
-      syncToLocalDisk,
       activeDoc,
       activeFolder,
       handleCreateFolder,

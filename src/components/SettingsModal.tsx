@@ -30,7 +30,6 @@ export const SettingsModal = ({
   libraryPath, 
   handleSelectLibraryLocation 
 }: SettingsModalProps) => {
-  const { syncToLocalDisk } = useAppContext();
   return (
     <AnimatePresence>
       {showSettings && (
@@ -162,14 +161,6 @@ export const SettingsModal = ({
                     Change
                   </button>
                 </div>
-                {libraryPath && (
-                  <button 
-                    onClick={syncToLocalDisk}
-                    className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] py-2 text-xs font-bold uppercase tracking-widest text-[var(--text-primary)] hover:bg-[var(--border-color)] transition-all"
-                  >
-                    Sync Now
-                  </button>
-                )}
               </div>
             </div>
 
