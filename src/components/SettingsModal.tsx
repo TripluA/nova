@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Settings, X, Moon, Sun, Monitor, Folder as FolderIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
 
+import { useAppContext } from '../context/AppContext';
+
 interface SettingsModalProps {
   showSettings: boolean;
   setShowSettings: (show: boolean) => void;
@@ -28,6 +30,7 @@ export const SettingsModal = ({
   libraryPath, 
   handleSelectLibraryLocation 
 }: SettingsModalProps) => {
+  const { syncToLocalDisk } = useAppContext();
   return (
     <AnimatePresence>
       {showSettings && (
@@ -159,6 +162,14 @@ export const SettingsModal = ({
                     Change
                   </button>
                 </div>
+                {libraryPath && (
+                  <button 
+                    onClick={syncToLocalDisk}
+                    className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] py-2 text-xs font-bold uppercase tracking-widest text-[var(--text-primary)] hover:bg-[var(--border-color)] transition-all"
+                  >
+                    Sync Now
+                  </button>
+                )}
               </div>
             </div>
 
