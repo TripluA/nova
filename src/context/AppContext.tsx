@@ -91,8 +91,6 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const DEFAULT_CONTENT = `# Welcome to Nova Editor\n\nNova is a minimalist, macOS-inspired Markdown editor designed for focused writing.\n\n## Features\n- **Real-time Preview**: See your changes as you type.\n- **macOS Aesthetic**: Clean, modern interface with a native feel.\n- **Local Storage**: Your documents are saved automatically.\n- **Word Count**: Keep track of your writing progress.\n\n### Getting Started\nTry editing this text! You can use standard Markdown syntax:\n- **Bold** and *Italic*\n- [Links](https://google.com)\n- \`Inline code\`\n- Code blocks\n\n> "Writing is the painting of the voice." — Voltaire\n\nEnjoy your writing session!\n`;
-
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -308,26 +306,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (parsedDocs.length > 0) handleSetActiveId(parsedDocs[0].id);
       } catch (error) {
         console.error("Failed to parse saved documents:", error);
-        const initialDoc: Document = {
-          id: '1',
-          title: 'Welcome to Nova',
-          content: DEFAULT_CONTENT,
-          updatedAt: Date.now(),
-          folderId: null,
-        };
-        setDocuments([initialDoc]);
-        handleSetActiveId(initialDoc.id);
+        setDocuments([]);
       }
     } else {
-      const initialDoc: Document = {
-        id: '1',
-        title: 'Welcome to Nova',
-        content: DEFAULT_CONTENT,
-        updatedAt: Date.now(),
-        folderId: null,
-      };
-      setDocuments([initialDoc]);
-      handleSetActiveId(initialDoc.id);
+      setDocuments([]);
     }
 
     if (savedFolders) {
